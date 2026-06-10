@@ -493,7 +493,8 @@ export default function App(){
     const code=genCode()
     setIsHost(true);setRoomCode(code);setPlayers([player]);setTiers(TIER_DEFAULTS);setScreen("lobby")
     await db.upsertPlayer(code,player)
-    await db.saveState(code,{players:[player],tiers:TIER_DEFAULTS,screen:"lobby",currentMode:null,modeState:null})
+    // Sla hostId op zodat clients weten wie de host is
+    await db.saveState(code,{hostId:id,players:[player],tiers:TIER_DEFAULTS,screen:"lobby",currentMode:null,modeState:null})
     window.history.replaceState({},"",`?room=${code}`)
     startPolling(code,true)
   }
@@ -501,6 +502,9 @@ export default function App(){
   const handleJoin=async(name,code)=>{
     const id=myIdRef.current;const player={id,name,score:0}
     myPlayerRef.current=player
+    // Check of kamer bestaat
+    const data=await db.getState(code)
+    if(!data||!data.state){alert("Kamer niet gevonden. Controleer de code.");return}
     setIsHost(false);setRoomCode(code);setPlayers([player]);setScreen("lobby")
     await db.upsertPlayer(code,player)
     window.history.replaceState({},"",`?room=${code}`)
