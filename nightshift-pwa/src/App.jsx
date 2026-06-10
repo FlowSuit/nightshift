@@ -78,7 +78,7 @@ function Home({onCreate,onJoin}){
 }
 
 // ── Lobby screen ───────────────────────────────────────────────────────────
-function Lobby({roomCode,players,isHost,myId,tiers,setTiers,onStart,onLeave}){
+function Lobby({roomCode,players,isHost,myId,tiers,setTiers,onStart,onLeave,connected}){
   const url=`${window.location.origin}?room=${roomCode}`
   const TIER_CFG=[{k:"flirty",label:"💋 Flirty",c:C.pink},{k:"extreme",label:"💀 Extreme",c:C.magenta},{k:"genart",label:"😳 Gênant",c:C.orange},{k:"social",label:"📱 Social Media",c:C.cyan},{k:"spicy",label:"🌶️ Spicy 18+",c:"#FF4444"}]
   const [copied,setCopied]=useState(false)
@@ -100,7 +100,7 @@ function Lobby({roomCode,players,isHost,myId,tiers,setTiers,onStart,onLeave}){
       <Card style={{marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <p style={{color:C.muted,fontWeight:700,fontSize:13}}>Spelers ({players.length})</p>
-          {!isHost&&<Pill color={C.cyan}>Wachten op host...</Pill>}
+          <Pill color={connected?C.lime:"#FF8A3D"}>{connected?"● Verbonden":"● Verbinden..."}</Pill>
         </div>
         <div style={{display:"grid",gap:6}}>
           {players.map(p=>(
@@ -543,6 +543,7 @@ const TIER_DEFAULTS={flirty:false,extreme:false,genart:false,social:false,spicy:
 
 export default function App(){
   const[screen,setScreen]=useState("home")
+  const[connected,setConnected]=useState(false)
   const[myPlayer,setMyPlayer]=useState(null)
   const[isHost,setIsHost]=useState(false)
   const[roomCode,setRoomCode]=useState(null)
@@ -606,33 +607,30 @@ export default function App(){
     if(channelRef.current){channelRef.current.unsubscribe();channelRef.current=null}
     const ch=getChannel(code)
     if(!ch){console.warn("Supabase niet geconfigureerd");return}
-    // Presence: betrouwbare speler-tracking
+    // Presence: gebruik 'hosting' direct (isHostRef nog niet gezet op dit moment)
     ch.on("presence",{event:"sync"},()=>{
-      if(!isHostRef.current)return
+      if(!hosting)return
       const state=ch.presenceState()
       const present=Object.values(state).flat().map(s=>s.player).filter(Boolean)
+      if(present.length===0)return
       setPlayers(prev=>{
         const updated=present.map(p=>{const ex=prev.find(e=>e.id===p.id);return ex||{...p,score:0}})
-        return updated.length>0?updated:prev
+        return updated
       })
     })
     ch.on("presence",{event:"join"},({newPresences})=>{
-      if(!isHostRef.current)return
-      newPresences.forEach(p=>{
-        if(!p.player)return
+      if(!hosting)return
+      newPresences.forEach(s=>{
+        if(!s.player)return
         setPlayers(prev=>{
-          if(prev.find(e=>e.id===p.player.id))return prev
-          return[...prev,{...p.player,score:0}]
+          if(prev.find(e=>e.id===s.player.id))return prev
+          return[...prev,{...s.player,score:0}]
         })
       })
     })
-    ch.on("presence",{event:"leave"},({leftPresences})=>{
-      if(!isHostRef.current)return
-      // Optioneel: spelers niet verwijderen als game al bezig is
-    })
     // Broadcast: game state sync van host naar clients
     ch.on("broadcast",{event:"game_state"},({payload})=>{
-      if(isHostRef.current)return
+      if(hosting)return
       if(payload.players)setPlayers(payload.players)
       if(payload.tiers)setTiers(payload.tiers)
       if(payload.screen)setScreen(payload.screen)
@@ -640,7 +638,7 @@ export default function App(){
       if(payload.modeState!==undefined)setModeState(payload.modeState)
     })
     ch.on("broadcast",{event:"player_action"},({payload})=>{
-      if(!isHostRef.current)return
+      if(!hosting)return
       setModeState(prev=>{
         if(!prev)return prev
         if(payload.type==="nhie_vote"||payload.type==="wie_vote")return{...prev,votes:{...prev.votes,...payload.votes}}
@@ -650,7 +648,10 @@ export default function App(){
     })
     ch.subscribe(async(status)=>{
       if(status==="SUBSCRIBED"){
-        await ch.track({player:myP})
+        setConnected(true)
+        try{await ch.track({player:myP})}catch(e){console.error("Presence track fout:",e)}
+      } else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
+        setConnected(false)
       }
     })
     channelRef.current=ch
@@ -732,7 +733,7 @@ export default function App(){
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Anton&family=Bricolage+Grotesque:wght@400;600;700;800&display=swap');*{font-family:'Bricolage Grotesque',system-ui,sans-serif;box-sizing:border-box;margin:0;padding:0}input::placeholder{color:${C.muted}}button{font-family:inherit}`}</style>
       <div style={{maxWidth:440,margin:"0 auto",minHeight:"100vh",padding:"28px 20px 48px",backgroundImage:`radial-gradient(120% 80% at 50% -10%,${C.magenta}14,transparent 60%),radial-gradient(100% 60% at 50% 110%,${C.cyan}10,transparent 55%)`}}>
         {screen==="home"&&<Home onCreate={handleCreate} onJoin={handleJoin}/>}
-        {screen==="lobby"&&<Lobby roomCode={roomCode} players={players} isHost={isHost} myId={myIdRef.current} tiers={tiers} setTiers={setTiers} onStart={handleStart} onLeave={handleLeave}/>}
+        {screen==="lobby"&&<Lobby roomCode={roomCode} players={players} isHost={isHost} myId={myIdRef.current} tiers={tiers} setTiers={setTiers} onStart={handleStart} onLeave={handleLeave} connected={connected}/>}
         {screen==="game"&&currentMode==="menu"&&<GameMenu players={players} isHost={isHost} onPick={pickMode} onScores={()=>setCurrentMode("scores")} onEinde={()=>setCurrentMode("einde")} onReset={()=>{setPlayers(prev=>prev.map(p=>({...p,score:0})));setCurrentMode("menu");setModeState(null)}}/>}
         {screen==="game"&&currentMode==="scores"&&<Scores players={players} onBack={()=>setCurrentMode("menu")}/>}
         {screen==="game"&&currentMode==="einde"&&<Einde players={players} onBack={()=>setCurrentMode("menu")} onReset={()=>{setPlayers(prev=>prev.map(p=>({...p,score:0})));setCurrentMode("menu");setModeState(null)}}/>}
