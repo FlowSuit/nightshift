@@ -542,8 +542,8 @@ function GameMenu({players,isHost,onPick,onScores,onEinde,onReset}){
 const TIER_DEFAULTS={flirty:false,extreme:false,genart:false,social:false,spicy:false}
 
 export default function App(){
-  const[screen,setScreen]=useState("home") // home | lobby | game | scores | einde
-  const[myPlayer,setMyPlayer]=useState(null) // {id, name}
+  const[screen,setScreen]=useState("home")
+  const[myPlayer,setMyPlayer]=useState(null)
   const[isHost,setIsHost]=useState(false)
   const[roomCode,setRoomCode]=useState(null)
   const[players,setPlayers]=useState([])
@@ -552,6 +552,19 @@ export default function App(){
   const[modeState,setModeState]=useState(null)
   const channelRef=useRef(null)
   const myIdRef=useRef(genId())
+  // Refs zodat callbacks altijd de laatste state hebben
+  const playersRef=useRef([])
+  const tiersRef=useRef(TIER_DEFAULTS)
+  const screenRef=useRef("home")
+  const currentModeRef=useRef(null)
+  const modeStateRef=useRef(null)
+  const isHostRef=useRef(false)
+  useEffect(()=>{playersRef.current=players},[players])
+  useEffect(()=>{tiersRef.current=tiers},[tiers])
+  useEffect(()=>{screenRef.current=screen},[screen])
+  useEffect(()=>{currentModeRef.current=currentMode},[currentMode])
+  useEffect(()=>{modeStateRef.current=modeState},[modeState])
+  useEffect(()=>{isHostRef.current=isHost},[isHost])
 
   // Check URL for room param (QR/link join)
   useEffect(()=>{
@@ -562,28 +575,39 @@ export default function App(){
     }
   },[])
 
-  const broadcastState=useCallback((state)=>{
-    if(!channelRef.current||!isHost)return
-    channelRef.current.send({type:"broadcast",event:"game_state",payload:state})
-  },[isHost])
+  // Broadcast via refs - altijd nieuwste state, geen stale closures
+  const broadcastNow=useCallback(()=>{
+    if(!channelRef.current||!isHostRef.current)return
+    channelRef.current.send({type:"broadcast",event:"game_state",payload:{
+      players:playersRef.current,tiers:tiersRef.current,screen:screenRef.current,
+      currentMode:currentModeRef.current,modeState:modeStateRef.current
+    }})
+  },[])
 
   const sendAction=useCallback((action)=>{
     if(!channelRef.current)return
     channelRef.current.send({type:"broadcast",event:"player_action",payload:{playerId:myIdRef.current,...action}})
   },[])
 
-  // Sync full game state on changes (host only)
+  // Host broadcast bij elke state change
   useEffect(()=>{
     if(!isHost||!channelRef.current)return
-    broadcastState({players,tiers,screen,currentMode,modeState})
-  },[players,tiers,screen,currentMode,modeState,isHost,broadcastState])
+    broadcastNow()
+  },[players,tiers,screen,currentMode,modeState,isHost,broadcastNow])
+
+  // Host heartbeat elke 3 sec - late joiners krijgen altijd de huidige state
+  useEffect(()=>{
+    if(!isHost)return
+    const t=setInterval(()=>broadcastNow(),3000)
+    return()=>clearInterval(t)
+  },[isHost,broadcastNow])
 
   const setupChannel=(code,myP,hosting)=>{
     if(channelRef.current){channelRef.current.unsubscribe();channelRef.current=null}
     const ch=getChannel(code)
     if(!ch){console.warn("Supabase niet geconfigureerd");return}
     ch.on("broadcast",{event:"game_state"},({payload})=>{
-      if(hosting)return // host ignores own broadcast
+      if(isHostRef.current)return
       if(payload.players)setPlayers(payload.players)
       if(payload.tiers)setTiers(payload.tiers)
       if(payload.screen)setScreen(payload.screen)
@@ -591,13 +615,25 @@ export default function App(){
       if(payload.modeState!==undefined)setModeState(payload.modeState)
     })
     ch.on("broadcast",{event:"player_join"},({payload})=>{
-      if(hosting){
-        setPlayers(prev=>{if(prev.find(p=>p.id===payload.player.id))return prev;return[...prev,payload.player]})
-      }
+      if(!isHostRef.current)return
+      setPlayers(prev=>{
+        if(prev.find(p=>p.id===payload.player.id))return prev
+        const next=[...prev,payload.player]
+        setTimeout(()=>{
+          ch.send({type:"broadcast",event:"game_state",payload:{
+            players:next,tiers:tiersRef.current,screen:screenRef.current,
+            currentMode:currentModeRef.current,modeState:modeStateRef.current
+          }})
+        },50)
+        return next
+      })
+    })
+    ch.on("broadcast",{event:"request_state"},()=>{
+      if(!isHostRef.current)return
+      setTimeout(()=>broadcastNow(),100)
     })
     ch.on("broadcast",{event:"player_action"},({payload})=>{
-      if(!hosting)return
-      // Merge votes/answers into current modeState
+      if(!isHostRef.current)return
       setModeState(prev=>{
         if(!prev)return prev
         if(payload.type==="nhie_vote"||payload.type==="wie_vote")return{...prev,votes:{...prev.votes,...payload.votes}}
@@ -608,6 +644,8 @@ export default function App(){
     ch.subscribe(status=>{
       if(status==="SUBSCRIBED"&&!hosting){
         ch.send({type:"broadcast",event:"player_join",payload:{player:myP}})
+        setTimeout(()=>ch.send({type:"broadcast",event:"request_state",payload:{}}),800)
+        setTimeout(()=>ch.send({type:"broadcast",event:"request_state",payload:{}}),2500)
       }
     })
     channelRef.current=ch
