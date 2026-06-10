@@ -121,7 +121,7 @@ function Lobby({roomCode,players,isHost,myId,tiers,setTiers,onStart,onLeave}){
         </Card>
       )}
       <div style={{display:"grid",gap:10}}>
-        {isHost&&<Btn full disabled={players.length<2} onClick={onStart}>{players.length<2?"MIN. 2 SPELERS NODIG":"START DE AVOND 🎉"}</Btn>}
+        {isHost&&<Btn full onClick={onStart}>START DE AVOND 🎉</Btn>}
         <Btn full dark small onClick={onLeave}>Verlaat kamer</Btn>
       </div>
     </div>
@@ -606,6 +606,31 @@ export default function App(){
     if(channelRef.current){channelRef.current.unsubscribe();channelRef.current=null}
     const ch=getChannel(code)
     if(!ch){console.warn("Supabase niet geconfigureerd");return}
+    // Presence: betrouwbare speler-tracking
+    ch.on("presence",{event:"sync"},()=>{
+      if(!isHostRef.current)return
+      const state=ch.presenceState()
+      const present=Object.values(state).flat().map(s=>s.player).filter(Boolean)
+      setPlayers(prev=>{
+        const updated=present.map(p=>{const ex=prev.find(e=>e.id===p.id);return ex||{...p,score:0}})
+        return updated.length>0?updated:prev
+      })
+    })
+    ch.on("presence",{event:"join"},({newPresences})=>{
+      if(!isHostRef.current)return
+      newPresences.forEach(p=>{
+        if(!p.player)return
+        setPlayers(prev=>{
+          if(prev.find(e=>e.id===p.player.id))return prev
+          return[...prev,{...p.player,score:0}]
+        })
+      })
+    })
+    ch.on("presence",{event:"leave"},({leftPresences})=>{
+      if(!isHostRef.current)return
+      // Optioneel: spelers niet verwijderen als game al bezig is
+    })
+    // Broadcast: game state sync van host naar clients
     ch.on("broadcast",{event:"game_state"},({payload})=>{
       if(isHostRef.current)return
       if(payload.players)setPlayers(payload.players)
@@ -613,24 +638,6 @@ export default function App(){
       if(payload.screen)setScreen(payload.screen)
       if(payload.currentMode!==undefined)setCurrentMode(payload.currentMode)
       if(payload.modeState!==undefined)setModeState(payload.modeState)
-    })
-    ch.on("broadcast",{event:"player_join"},({payload})=>{
-      if(!isHostRef.current)return
-      setPlayers(prev=>{
-        if(prev.find(p=>p.id===payload.player.id))return prev
-        const next=[...prev,payload.player]
-        setTimeout(()=>{
-          ch.send({type:"broadcast",event:"game_state",payload:{
-            players:next,tiers:tiersRef.current,screen:screenRef.current,
-            currentMode:currentModeRef.current,modeState:modeStateRef.current
-          }})
-        },50)
-        return next
-      })
-    })
-    ch.on("broadcast",{event:"request_state"},()=>{
-      if(!isHostRef.current)return
-      setTimeout(()=>broadcastNow(),100)
     })
     ch.on("broadcast",{event:"player_action"},({payload})=>{
       if(!isHostRef.current)return
@@ -641,11 +648,9 @@ export default function App(){
         return prev
       })
     })
-    ch.subscribe(status=>{
-      if(status==="SUBSCRIBED"&&!hosting){
-        ch.send({type:"broadcast",event:"player_join",payload:{player:myP}})
-        setTimeout(()=>ch.send({type:"broadcast",event:"request_state",payload:{}}),800)
-        setTimeout(()=>ch.send({type:"broadcast",event:"request_state",payload:{}}),2500)
+    ch.subscribe(async(status)=>{
+      if(status==="SUBSCRIBED"){
+        await ch.track({player:myP})
       }
     })
     channelRef.current=ch
