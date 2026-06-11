@@ -116,7 +116,7 @@ function Lobby({roomCode,players,isHost,myId,tiers,setTiers,onStart,onLeave}){
 
 function Actie({players,addScore,tiers,onBack,isHost,state,setState}){
   const p2=useMemo(()=>shuffle(pool("actie",tiers)),[tiers])
-  if(!state)return null
+  if(!state||!players.length||!p2.length)return null
   const{turn=0,done=false}=state
   const sp=players[turn%players.length]
   const o=p2[turn%p2.length]
@@ -187,7 +187,7 @@ function Wie({players,addScore,tiers,onBack,isHost,myId,sendAction,state,setStat
 
 function Missie({players,addScore,tiers,onBack,isHost,state,setState}){
   const mp=useMemo(()=>shuffle(pool("missie",tiers)),[tiers])
-  if(!state)return null
+  if(!state||!players.length||!mp.length)return null
   const{turn=0,done=false}=state
   const sp=players[turn%players.length];const o=mp[turn%mp.length];const d=MD[o.m||2];const rn=turn+1
   if(done)return<Done title="SNELLE MISSIES" color={C.gold} onBack={onBack}/>
@@ -205,7 +205,7 @@ function Missie({players,addScore,tiers,onBack,isHost,state,setState}){
 
 function Koning({players,addScore,tiers,onBack,isHost,state,setState}){
   const kp=useMemo(()=>shuffle(pool("koning",tiers)),[tiers])
-  if(!state)return null
+  if(!state||!players.length||!kp.length)return null
   const{ronde=0,phase="pick",targetId=null,done=false}=state
   const king=players[ronde%players.length];const o=kp[ronde%kp.length];const target=players.find(p=>p.id===targetId);const rn=ronde+1
   if(done)return<Done title="DE KONING" color={C.gold} onBack={onBack}/>
@@ -233,7 +233,7 @@ function Dobbel({players,addScore,onBack,isHost,state,setState}){
   const[rolling,setRolling]=useState(false)
   const[dv,setDv]=useState(1)
   const timerRef=useRef(null)
-  if(!state)return null
+  if(!state||!players.length)return null
   const{ronde=0,val=1,fx=null,phase="ready",oppId=null,d1=null,d2=null,done=false}=state
   const sp=players[ronde%players.length];const opp=players.find(p=>p.id===oppId);const rn=ronde+1
   const isDuel=fx&&fx.toUpperCase().includes("DUEL")
@@ -354,7 +354,7 @@ function BesteAntwoord({players,addScore,tiers,onBack,isHost,myId,sendAction,sta
 
 function Versus({players,addScore,tiers,onBack,isHost,state,setState}){
   const vp=useMemo(()=>shuffle(pool("versus",tiers)),[tiers])
-  if(!state)return null
+  if(!state||!players.length||!vp.length)return null
   const{ronde=0,phase="pick",oppId=null,winnerId=null,drinksLeft=0,drinksGiven={},done=false}=state
   const sp=players[ronde%players.length];const o=vp[ronde%vp.length];const d=MD[o.m||2]
   const opp=players.find(p=>p.id===oppId);const winner=players.find(p=>p.id===winnerId);const rn=ronde+1;const dealAmt=(o.m||2)+1
