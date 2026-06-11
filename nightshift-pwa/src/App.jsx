@@ -535,7 +535,9 @@ export default function App(){
 
   const pickMode=(mode)=>{
     setCurrentMode(mode)
-    setModeState({turn:0,ronde:0,phase:"intro",done:false,votes:{},answers:{},oppId:null,winnerId:null,drinksLeft:0,drinksGiven:{},d1:null,d2:null,fx:null,val:1,targetId:null,straf:null})
+    // Elke mode heeft zijn eigen startfase
+    const startPhase={koning:"pick",dobbel:"ready",versus:"pick",wie:"intro",nhie:"intro",ba:"intro",actie:"turn",missie:"turn",groep:"round"}[mode]||"intro"
+    setModeState({turn:0,ronde:0,phase:startPhase,done:false,votes:{},answers:{},oppId:null,winnerId:null,drinksLeft:0,drinksGiven:{},d1:null,d2:null,fx:null,val:1,targetId:null,straf:null})
   }
   const handleModeBack=()=>{setCurrentMode("menu");setModeState(null)}
   const modeProps={players,addScore,tiers,isHost,myId:myIdRef.current,sendAction,onBack:handleModeBack,state:modeState,setState:setModeState}
