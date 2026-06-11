@@ -117,13 +117,18 @@ function Lobby({roomCode,players,isHost,myId,tiers,setTiers,onStart,onLeave}){
 function Actie({players,addScore,tiers,onBack,isHost,state,setState}){
   const p2=useMemo(()=>shuffle(pool("actie",tiers)),[tiers])
   if(!state||!players.length||!p2.length)return null
-  const{turn=0,done=false}=state
+  const{turn=0,done=false,currentItem=null}=state
   const sp=players[turn%players.length]
-  const o=p2[turn%p2.length]
+  const o=currentItem||p2[turn%p2.length]
   const d=MD[o.m||2]
   const rn=turn+1
   if(done)return<Done title="VOER UIT OF DRINK" color={C.lime} onBack={onBack}/>
-  const next=pts=>{if(pts)addScore(sp.id,pts);if(rn>=R.actie)setState({...state,done:true});else setState({...state,turn:turn+1})}
+  const next=pts=>{
+    if(pts)addScore(sp.id,pts)
+    const newTurn=turn+1
+    if(rn>=R.actie)setState({...state,done:true})
+    else setState({...state,turn:newTurn,currentItem:p2[newTurn%p2.length]})
+  }
   return(
     <div>
       <Hdr title="VOER UIT OF DRINK" sub={`${rn}/${R.actie}`} onBack={isHost?onBack:null}/>
@@ -142,8 +147,8 @@ function Wie({players,addScore,tiers,onBack,isHost,myId,sendAction,state,setStat
   const wp=useMemo(()=>shuffle(pool("wie",tiers)),[tiers])
   const sp=useMemo(()=>pool("actie",tiers),[tiers])
   if(!state)return null
-  const{ronde=0,phase="intro",votes={},straf=null,done=false}=state
-  const vraag=wp[ronde%wp.length]
+  const{ronde=0,phase="intro",votes={},straf=null,done=false,currentItem=null}=state
+  const vraag=currentItem||wp[ronde%wp.length]
   const rn=ronde+1
   const myVote=votes[myId]
   const computeReveal=()=>{
@@ -156,7 +161,8 @@ function Wie({players,addScore,tiers,onBack,isHost,myId,sendAction,state,setStat
   const nextR=()=>{
     const reveal=computeReveal()
     if(!reveal.tie){const ws=new Set(reveal.winners.map(w=>w.id));players.forEach(p=>{if(ws.has(votes[p.id]))addScore(p.id,2)})}
-    if(rn>=R.wie)setState({...state,done:true});else setState({...state,ronde:ronde+1,phase:"intro",votes:{},straf:null})
+    const newRonde=ronde+1
+    if(rn>=R.wie)setState({...state,done:true});else setState({...state,ronde:newRonde,phase:"intro",votes:{},straf:null,currentItem:wp[newRonde%wp.length]})
   }
   const allVoted=players.every(p=>votes[p.id])
   if(done)return<Done title="WIE VAN DE GROEP" color={C.cyan} onBack={onBack}/>
@@ -188,10 +194,15 @@ function Wie({players,addScore,tiers,onBack,isHost,myId,sendAction,state,setStat
 function Missie({players,addScore,tiers,onBack,isHost,state,setState}){
   const mp=useMemo(()=>shuffle(pool("missie",tiers)),[tiers])
   if(!state||!players.length||!mp.length)return null
-  const{turn=0,done=false}=state
-  const sp=players[turn%players.length];const o=mp[turn%mp.length];const d=MD[o.m||2];const rn=turn+1
+  const{turn=0,done=false,currentItem=null}=state
+  const sp=players[turn%players.length];const o=currentItem||mp[turn%mp.length];const d=MD[o.m||2];const rn=turn+1
   if(done)return<Done title="SNELLE MISSIES" color={C.gold} onBack={onBack}/>
-  const next=pts=>{if(pts)addScore(sp.id,pts);if(rn>=R.missie)setState({...state,done:true});else setState({...state,turn:turn+1})}
+  const next=pts=>{
+    if(pts)addScore(sp.id,pts)
+    const newTurn=turn+1
+    if(rn>=R.missie)setState({...state,done:true})
+    else setState({...state,turn:newTurn,currentItem:mp[newTurn%mp.length]})
+  }
   return(
     <div>
       <Hdr title="SNELLE MISSIES" sub={`${rn}/${R.missie}`} onBack={isHost?onBack:null}/>
@@ -207,9 +218,10 @@ function Koning({players,addScore,tiers,onBack,isHost,state,setState}){
   const kp=useMemo(()=>shuffle(pool("koning",tiers)),[tiers])
   if(!state||!players.length||!kp.length)return null
   const{ronde=0,phase="pick",targetId=null,done=false}=state
-  const king=players[ronde%players.length];const o=kp[ronde%kp.length];const target=players.find(p=>p.id===targetId);const rn=ronde+1
+  const{currentItem:koningItem=null}=state
+  const king=players[ronde%players.length];const o=koningItem||kp[ronde%kp.length];const target=players.find(p=>p.id===targetId);const rn=ronde+1
   if(done)return<Done title="DE KONING" color={C.gold} onBack={onBack}/>
-  const nextR=()=>{if(rn>=R.koning)setState({...state,done:true});else setState({...state,ronde:ronde+1,phase:"pick",targetId:null})}
+  const nextR=()=>{const newRondeK=ronde+1;if(rn>=R.koning)setState({...state,done:true});else setState({...state,ronde:newRondeK,phase:"pick",targetId:null,currentItem:kp[newRondeK%kp.length]})}
   return(
     <div>
       <Hdr title="DE KONING" sub={`${rn}/${R.koning}`} onBack={isHost?onBack:null}/>
@@ -238,8 +250,8 @@ function Dobbel({players,addScore,onBack,isHost,state,setState}){
   const sp=players[ronde%players.length];const opp=players.find(p=>p.id===oppId);const rn=ronde+1
   const isDuel=fx&&fx.toUpperCase().includes("DUEL")
   const rollDice=()=>{
-    if(!isHost)return;setRolling(true);const newFx=rand(DICE_FX_POOL);let c=0
-    timerRef.current=setInterval(()=>{setDv(Math.floor(Math.random()*6)+1);c++;if(c>=18){clearInterval(timerRef.current);const v=Math.floor(Math.random()*6)+1;setDv(v);setRolling(false);setState({...state,phase:"result",val:v,fx:newFx})}},80)
+    if(!isHost)return;setRolling(true);const newFx=rand(DICE_FX_POOL);const newVal=Math.floor(Math.random()*6)+1;let c=0
+    timerRef.current=setInterval(()=>{setDv(Math.floor(Math.random()*6)+1);c++;if(c>=18){clearInterval(timerRef.current);setDv(newVal);setRolling(false);setState({...state,phase:"result",val:newVal,fx:newFx})}},80)
   }
   useEffect(()=>()=>clearInterval(timerRef.current),[])
   const nextR=()=>{if(rn>=R.dobbel)setState({...state,done:true});else setState({...state,ronde:ronde+1,phase:"ready",val:1,fx:null,oppId:null,d1:null,d2:null})}
@@ -285,14 +297,16 @@ function Nhie({players,addScore,tiers,onBack,isHost,myId,sendAction,state,setSta
   const np=useMemo(()=>shuffle(pool("nhie",tiers)),[tiers])
   if(!state)return null
   const{ronde=0,phase="intro",votes={},done=false}=state
-  const pr=np[ronde%np.length];const rn=ronde+1;const myVote=votes[myId]
+  const{currentItem:nhieItem=null}=state
+  const pr=nhieItem||np[ronde%np.length];const rn=ronde+1;const myVote=votes[myId]
   const wel=players.filter(p=>votes[p.id]==="wel");const niet=players.filter(p=>votes[p.id]==="niet")
   const allVoted=players.every(p=>votes[p.id]);const allSame=allVoted&&(wel.length===0||niet.length===0)
   const minority=wel.length<=niet.length?wel:niet;const majority=wel.length>niet.length?wel:niet;const alone=allVoted&&minority.length===1
   const castVote=v=>{if(myVote)return;const newVotes={...votes,[myId]:v};sendAction({type:"nhie_vote",votes:newVotes});setState({...state,votes:newVotes})}
   const nextR=sid=>{
     if(allVoted&&!allSame){majority.forEach(p=>addScore(p.id,2));if(alone)addScore(minority[0].id,3);if(sid)addScore(sid,3)}
-    if(rn>=R.nhie)setState({...state,done:true});else setState({...state,ronde:ronde+1,phase:"intro",votes:{}})
+    const newRondeN=ronde+1
+    if(rn>=R.nhie)setState({...state,done:true});else setState({...state,ronde:newRondeN,phase:"intro",votes:{},currentItem:np[newRondeN%np.length]})
   }
   if(done)return<Done title="NEVER HAVE I EVER" color={C.purple} onBack={onBack}/>
   return(
@@ -330,9 +344,10 @@ function BesteAntwoord({players,addScore,tiers,onBack,isHost,myId,sendAction,sta
   const[input,setInput]=useState("")
   if(!state)return null
   const{ronde=0,phase="intro",answers={},done=false}=state
-  const pr=bp[ronde%bp.length];const rn=ronde+1;const myAnswer=answers[myId];const allAnswered=players.every(p=>answers[p.id])
+  const{currentItem:baItem=null}=state
+  const pr=baItem||bp[ronde%bp.length];const rn=ronde+1;const myAnswer=answers[myId];const allAnswered=players.every(p=>answers[p.id])
   const submitAnswer=()=>{if(!input.trim()||myAnswer)return;const newAnswers={...answers,[myId]:input.trim()};sendAction({type:"ba_answer",answers:newAnswers});setState({...state,answers:newAnswers});setInput("")}
-  const pick=wid=>{addScore(wid,5);if(rn>=R.ba)setState({...state,done:true});else{setState({...state,ronde:ronde+1,phase:"intro",answers:{}});setInput("")}}
+  const pick=wid=>{addScore(wid,5);const newRondeB=ronde+1;if(rn>=R.ba)setState({...state,done:true});else{setState({...state,ronde:newRondeB,phase:"intro",answers:{},currentItem:bp[newRondeB%bp.length]});setInput("")}}
   if(done)return<Done title="BESTE ANTWOORD" color={C.gold} onBack={onBack}/>
   return(
     <div>
@@ -356,10 +371,11 @@ function Versus({players,addScore,tiers,onBack,isHost,state,setState}){
   const vp=useMemo(()=>shuffle(pool("versus",tiers)),[tiers])
   if(!state||!players.length||!vp.length)return null
   const{ronde=0,phase="pick",oppId=null,winnerId=null,drinksLeft=0,drinksGiven={},done=false}=state
-  const sp=players[ronde%players.length];const o=vp[ronde%vp.length];const d=MD[o.m||2]
+  const{currentItem:vsItem=null}=state
+  const sp=players[ronde%players.length];const o=vsItem||vp[ronde%vp.length];const d=MD[o.m||2]
   const opp=players.find(p=>p.id===oppId);const winner=players.find(p=>p.id===winnerId);const rn=ronde+1;const dealAmt=(o.m||2)+1
   if(done)return<Done title="VERSUS / DUELS" color={C.magenta} onBack={onBack}/>
-  const nextR=()=>{if(rn>=R.versus)setState({...state,done:true});else setState({...state,ronde:ronde+1,phase:"pick",oppId:null,winnerId:null,drinksLeft:0,drinksGiven:{}})}
+  const nextR=()=>{const newRondeV=ronde+1;if(rn>=R.versus)setState({...state,done:true});else setState({...state,ronde:newRondeV,phase:"pick",oppId:null,winnerId:null,drinksLeft:0,drinksGiven:{},currentItem:vp[newRondeV%vp.length]})}
   const handleWin=w=>{addScore(w.id,o.p||3);setState({...state,phase:"deal",winnerId:w.id,drinksLeft:dealAmt,drinksGiven:{}})}
   const giveDrink=pid=>{if(drinksLeft<=0)return;const ng={...drinksGiven,[pid]:(drinksGiven[pid]||0)+1};setState({...state,drinksGiven:ng,drinksLeft:drinksLeft-1})}
   return(
